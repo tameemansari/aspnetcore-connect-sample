@@ -40,9 +40,10 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
                 // Initialize the GraphServiceClient.
                 var graphClient = _graphSdkHelper.GetAuthenticatedClient((ClaimsIdentity)User.Identity);
 
-                ViewData["Response"] = await GraphService.GetUserJson(graphClient, email, HttpContext);
+                ViewData["Response"] = await GraphService.GetLicenseInfo(graphClient, email, HttpContext);
 
-                ViewData["Picture"] = await GraphService.GetPictureBase64(graphClient, email, HttpContext);
+                // Reset the current user's email address and the status to display when the page reloads.
+                TempData["Message"] = "Got license data.";
             }
 
             return View();
