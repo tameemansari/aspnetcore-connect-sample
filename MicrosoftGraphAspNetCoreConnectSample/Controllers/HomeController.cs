@@ -3,14 +3,23 @@
 *  See LICENSE in the source repository root for complete license information. 
 */
 
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using MicrosoftGraphAspNetCoreConnectSample.Helpers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Graph;
-using Microsoft.AspNetCore.Hosting;
+using MicrosoftGraphAspNetCoreConnectSample.Helpers;
+using Newtonsoft.Json;
+using Smartsheet.NET.Core.Http;
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
 {
@@ -18,13 +27,13 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
     {
         private readonly IConfiguration _configuration;
         private readonly IHostingEnvironment _env;
-        private readonly IGraphSdkHelper _graphSdkHelper;
+        private readonly IGraphSdkHelper _graphSdkHelper;        
 
         public HomeController(IConfiguration configuration, IHostingEnvironment hostingEnvironment, IGraphSdkHelper graphSdkHelper)
         {
             _configuration = configuration;
             _env = hostingEnvironment;
-            _graphSdkHelper = graphSdkHelper;
+            _graphSdkHelper = graphSdkHelper;            
         }
 
         [AllowAnonymous]
@@ -102,13 +111,68 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
             return View();
         }
 
-        public IActionResult Loader(string code, string expires_in, string state = "")
+        public async Task<IActionResult> Loader(string code, string expires_in, string state = "")
         {
-            // https://localhost:44334/loader?code=y0fpnavbo97ftcf7&expires_in=599952&state=
+            // https://localhost:44334/home/loader?code=y0fpnavbo97ftcf7&expires_in=599952&state=
             // get query string info and get consent code & get auth token from smartsheets
+            var accessToken = await ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                // call user info.
+                SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
+                Smartsheet.NET.Core.Entities.User userInfo = await client.GetCurrentUser(accessToken);                
+            }
 
             // now all that handshake is complete redirect to index page. 
             return View();
         }
+
+        private async Task<string> ObtainAccessToken(string url, string code, string clientId= "j6ex9cdw0ci3j9ucs2e", string clientSecret= "g8xirmd07iqr719i2f3", string redirectUri = "")
+        {
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                throw new Exception("Provided Smartsheet Code cannot be null");
+            }
+
+            var hash = GenerateSHA256String(clientSecret + "|" + code);
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("grant_type", "authorization_code"),
+                new KeyValuePair<string, string>("client_id", clientId),
+                new KeyValuePair<string, string>("code", code),
+                new KeyValuePair<string, string>("hash", hash)
+            });
+
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+            HttpClient smartsheetApiClient = new HttpClient();
+            var response = await smartsheetApiClient.PostAsync(url, content);
+            string authResponse = string.Empty;
+            string accessToken = string.Empty;
+
+            if (response.IsSuccessStatusCode)
+            {
+                authResponse = await response.Content.ReadAsStringAsync();
+                Dictionary<string, string> responseInfo = JsonConvert.DeserializeObject<Dictionary<string, string>>(authResponse);
+                accessToken = responseInfo["access_token"];          
+                HttpContext.Session.SetString("SSAccessToken", accessToken);
+            }
+
+            return accessToken;
+        }
+
+        private static string GenerateSHA256String(string inputString)
+        {
+            SHA256 sha256 = SHA256.Create();
+            byte[] bytes = Encoding.UTF8.GetBytes(inputString);
+            byte[] hash = sha256.ComputeHash(bytes);
+
+            StringBuilder result = new StringBuilder();
+            for (int i = 0; i < hash.Length; i++) { result.Append(hash[i].ToString("X2")); }
+
+            return result.ToString();            
+        }
+
     }
 }

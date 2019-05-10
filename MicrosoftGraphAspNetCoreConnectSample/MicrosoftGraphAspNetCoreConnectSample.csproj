@@ -22,5 +22,11 @@
   <ItemGroup>
     <DotNetCliToolReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Tools" Version="2.0.0" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <Reference Include="Smartsheet.Net.Core">
+      <HintPath>localDep\Smartsheet.Net.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 
 </Project>
