@@ -101,5 +101,14 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
         {
             return View();
         }
+
+        public IActionResult Loader(string code, string expires_in, string state = "")
+        {
+            // https://localhost:44334/loader?code=y0fpnavbo97ftcf7&expires_in=599952&state=
+            // get query string info and get consent code & get auth token from smartsheets
+
+            // now all that handshake is complete redirect to index page. 
+            return View();
+        }
     }
 }
