@@ -137,7 +137,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
                 string s = $"Sheet Name - {sheetInfo.Name}[{sheetInfo.Id}] with RWUrl ={s1} <br>";
 
                 // get list of users the sheet is shared with
-                // 
+                await GetSheetShareInfo(accessToken, sheetInfo.Id.ToString());
                 sheetDetails.Append(s);                
             }
 
@@ -145,6 +145,33 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
 
             // now all that handshake is complete redirect to index page. 
             return View();
+        }
+
+        private async Task GetSheetShareInfo(string accessToken, string sheetId)
+        {
+            string reponseUrl = string.Empty;
+            string url = string.Empty;
+            if (!string.IsNullOrWhiteSpace(sheetId))
+            {
+                url = $"https://api.smartsheet.com/2.0/sheets/{sheetId}/shares";
+            }
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                throw new Exception("Provided Smartsheet Code cannot be null");
+            }
+
+            HttpClient httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + accessToken);
+            var response = await httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                reponseUrl = await response.Content.ReadAsStringAsync();
+                SmartsheetShare shareInfo = JsonConvert.DeserializeObject<SmartsheetShare>(reponseUrl);
+
+                Console.WriteLine("Shared with:" + shareInfo.Data.Count);
+            }
         }
 
         private async Task<string> GetPublishUrl(string accessToken, string sheetId)
