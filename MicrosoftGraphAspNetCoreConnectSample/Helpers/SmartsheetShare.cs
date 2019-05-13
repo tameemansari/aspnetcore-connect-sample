@@ -6,7 +6,7 @@ using System.Globalization;
 
 namespace MicrosoftGraphAspNetCoreConnectSample.Helpers.Models
 {
-    public partial class SmartsheetShare
+    public partial class SmartSheetShare
     {
         [JsonProperty("pageNumber", NullValueHandling = NullValueHandling.Ignore)]
         public long? PageNumber { get; set; }

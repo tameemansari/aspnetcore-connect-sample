@@ -10,8 +10,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Graph;
 using MicrosoftGraphAspNetCoreConnectSample.Helpers;
+using MicrosoftGraphAspNetCoreConnectSample.Helpers.Models;
 using Smartsheet.NET.Core.Entities;
 using Smartsheet.NET.Core.Http;
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
@@ -118,21 +120,42 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
                 accessToken = await SmartSheetHelper.ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
                 HttpContext.Session.SetString("SSAccessToken", accessToken);
             }
-
-            // call user info.
+            
             SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
-            Smartsheet.NET.Core.Entities.User userInfo = await client.GetCurrentUser(accessToken);
-
             var details = await client.ListSheets(accessToken);
-            StringBuilder sheetDetails = new StringBuilder();;
-            foreach(Sheet sheetInfo in details)
-            {
-                //get published status of the sheet. 
-                string s1 = await SmartSheetHelper.GetPublishUrl(accessToken, sheetInfo.Id.ToString());
-                string s = $"Sheet Name - {sheetInfo.Name}[{sheetInfo.Id}] with RWUrl ={s1} <br>";
 
+            string email = User.FindFirst("preferred_username")?.Value;
+            var graphClient = _graphSdkHelper.GetAuthenticatedClient((ClaimsIdentity)User.Identity);
+            StringBuilder sheetDetails = new StringBuilder();;
+            foreach(Sheet thisSheet in details)
+            {
+                string sheetPublishUrl = await SmartSheetHelper.GetPublishUrl(accessToken, thisSheet.Id.ToString());
+
+                SheetInformation sheetToBuild = new SheetInformation()
+                {
+                    SheetId = thisSheet.Id.ToString(),
+                    SheetName = thisSheet.Name,
+                    SheetRWUrl = sheetPublishUrl,
+                    Collaborators = new List<string>(),
+                };
+                
                 // get list of users the sheet is shared with
-                await SmartSheetHelper.GetSheetShareInfo(accessToken, sheetInfo.Id.ToString());
+                SmartSheetShare sheetSharedWith = await SmartSheetHelper.GetSheetShareInfo(accessToken, thisSheet.Id.ToString());
+                if (sheetSharedWith != null)
+                {
+                    List<string> userInfo = new List<string>();
+                    foreach(Datum datum in sheetSharedWith.Data)
+                    {
+                        if (!string.IsNullOrWhiteSpace(datum.Email))
+                        {
+                            sheetToBuild.Collaborators.Add(datum.Email);
+                        }
+                    }                    
+                }
+                await GraphService.CreateGroupAndTeamApp(graphClient, email, sheetToBuild);
+
+                //get published status of the sheet.                 
+                string s = $"Sheet Name - {thisSheet.Name}[{thisSheet.Id}] with RWUrl ={sheetPublishUrl} <br>";
                 sheetDetails.Append(s);                
             }
 

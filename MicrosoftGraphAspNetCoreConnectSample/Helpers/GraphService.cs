@@ -10,6 +10,7 @@ using Microsoft.Graph;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -98,7 +99,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                     licenseInfo += "... Assignment success.";
                 }
 
-                licenseInfo += await CreateGroupAndTeamApp(graphClient, upn);
+                // licenseInfo += await CreateGroupAndTeamApp(graphClient, upn);
 
                 return JsonConvert.SerializeObject(licenseInfo, Formatting.Indented);
             }
@@ -108,69 +109,93 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
             }
         }
 
-        public static async Task<string> CreateGroupAndTeamApp(GraphServiceClient graphClient, string upn)
+
+
+        public static async Task<string> CreateGroupAndTeamApp(GraphServiceClient graphClient, string upn, SheetInformation sheetInformation)
         {
             try
             {
                 var userInfo = await graphClient.Users[upn].Request().GetAsync().ConfigureAwait(false);
                 string suffixInfo = Guid.NewGuid().ToString().Substring(0, 8);
-
-                Group protonGrp = new Group()
-                {
-                    DisplayName = $"Proton ISV Tool team-{suffixInfo}",
-                    MailNickname = $"grp1{suffixInfo}",
-                    Description = "ISV App group description",
+                string sheetName = sheetInformation.SheetName;
+                
+                #region Create group and add executing user as owner. 
+                var grpInfo = await graphClient.Groups.Request().AddAsync(new Group()
+                {                    
+                    DisplayName = $"{suffixInfo}-{sheetName} Sheet Collaborators", 
+                    MailNickname = $"grp1{sheetInformation.SheetId}-{suffixInfo}",
+                    Description = $"Team for collaborating on {sheetName}",
                     Visibility = "Private",
                     GroupTypes = new List<string>() { "Unified" },
                     MailEnabled = true,
                     SecurityEnabled = false,
-                };
-
-                // will create group and add executing user as owner. 
-                var grpInfo = await graphClient.Groups.Request().AddAsync(protonGrp);
+                });
                 await graphClient.Groups[grpInfo.Id].Members.References.Request().AddAsync(userInfo);
 
-                // build team. 
-                Team protonTeam = new Team()
+                #region Append users to group. 
+                // TODO :: Append users.
+                // await AddUserToTeam(graphClient, grpInfo.Id, "usr3", "self34.onmicrosoft.com");
+                #endregion 
+
+                #endregion
+
+                #region Build team and channel.
+                var teamInfo = await graphClient.Groups[grpInfo.Id].Team.Request().PutAsync(new Team()
                 {
                     MemberSettings = new TeamMemberSettings() { AllowCreateUpdateChannels = true, },
                     MessagingSettings = new TeamMessagingSettings() { AllowUserEditMessages = true, AllowUserDeleteMessages = true, },
-                };
-                var teamInfo = await graphClient.Groups[grpInfo.Id].Team.Request().PutAsync(protonTeam);
-
-                var channelInfo = await graphClient.Teams[grpInfo.Id].Channels.Request().AddAsync(new Channel()
-                {
-                    DisplayName = "Proton Channel",
-                    Description = "Proton Channel description",
                 });
 
-                var teamApps = await graphClient.AppCatalogs.TeamsApps.Request().GetAsync();
-                foreach (TeamsApp tapp in teamApps)
+                // build channel into team.
+                var channelInfo = await graphClient.Teams[grpInfo.Id].Channels.Request().AddAsync(new Channel()
                 {
-                    Console.WriteLine($"{tapp.DisplayName}-{tapp.ExternalId}");
+                    DisplayName = $"{sheetName}-{suffixInfo}",
+                    Description = "Proton Channel description",                    
+                });
+                #endregion
+
+                #region Check and install app to team. 
+                var teamApps = await graphClient.AppCatalogs.TeamsApps.Request().GetAsync();
+                TeamsApp sheetApp = teamApps.First(x => x.Id.Equals("f4d81e8e-4500-44c2-8328-9e06cbe037c5", StringComparison.InvariantCultureIgnoreCase));
+
+                var installedApps = await graphClient.Teams[grpInfo.Id].InstalledApps.Request().Expand("teamsAppDefinition").GetAsync();
+                bool isSmartsheetsInstalled = installedApps.Any(x => x.TeamsAppDefinition.TeamsAppId.Equals("f4d81e8e-4500-44c2-8328-9e06cbe037c5", StringComparison.InvariantCultureIgnoreCase));
+                if (!isSmartsheetsInstalled)
+                {
+                    TeamsAppInstallation appInstall = new TeamsAppInstallation()
+                    {
+                        AdditionalData = new Dictionary<string, object>()
+                        {
+                            {
+                                "teamsApp@odata.bind", "https://graph.microsoft.com/beta/appCatalogs/teamsApps/f4d81e8e-4500-44c2-8328-9e06cbe037c5"
+                            }
+                        },
+                    };
+                    await graphClient.Teams[grpInfo.Id].InstalledApps.Request().AddAsync(appInstall);
                 }
+                #endregion
 
-                //string graphV1Endpoint = "https://graph.microsoft.com/v1.0";
-                //var mapTab = await graphClient.Teams[grpInfo.Id].Channels[channelInfo.Id].Tabs.Request().AddAsync(
-                //    new TeamsTab()
-                //    {
-                //        DisplayName = "Map",
-                //        TeamsApp = $"{graphV1Endpoint}/appCatalogs/teamsApps/com.microsoft.teamspace.tab.web", 
-                //        // Website tab
-                //        // It's serialized as "teamsApp@odata.bind" : "{graphV1Endpoint}/appCatalogs/teamsApps/com.microsoft.teamspace.tab.web"
-                //        Configuration = new TeamsTabConfiguration()
-                //        {
-                //            EntityId = null,
-                //            ContentUrl = "https://www.bing.com/maps/embed?h=800&w=800&cp=47.640016~-122.13088799999998&lvl=16&typ=s&sty=r&src=SHELL&FORM=MBEDV8",
-                //            WebsiteUrl = "https://binged.it/2xjBS1R",
-                //            RemoveUrl = null,
-                //        }
-                //    });
-
-
-
-                // add user to team. 
-                await AddUserToTeam(graphClient, grpInfo.Id, "usr3", "self34.onmicrosoft.com");
+                #region Ping smartsheet app to channel with right configuration.
+                
+                //one didnt bind - https://app.smartsheet.com/b/publish?EQBCT=f7615490df8a44238ddc286745ade920&ss_src=mst
+                // string sheetUri = "https://app.smartsheet.com/b/publish?EQBCT=05ec5cb2e46f4fe4bf730c4f003d851d";                
+                var sheetTab = await graphClient.Teams[grpInfo.Id].Channels[channelInfo.Id].Tabs.Request().AddAsync(new TeamsTab()
+                {
+                    AdditionalData = new Dictionary<string, object>()
+                    {
+                        {
+                            "teamsApp@odata.bind", "https://graph.microsoft.com/beta/appCatalogs/teamsApps/f4d81e8e-4500-44c2-8328-9e06cbe037c5"
+                        }
+                    },                    
+                    DisplayName = sheetName,
+                    TeamsApp = sheetApp,
+                    Configuration = new TeamsTabConfiguration()
+                    {
+                        ContentUrl = sheetInformation.SheetRWUrl,
+                        WebsiteUrl = sheetInformation.SheetRWUrl,
+                    },
+                });
+                #endregion
 
                 return JsonConvert.SerializeObject("Success", Formatting.Indented);
             }
@@ -221,42 +246,6 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                 return JsonConvert.SerializeObject(se.Message, Formatting.Indented);
             }
 
-        }
-
-
-        // Load user's profile picture in base64 string.
-        public static async Task<string> GetPictureBase64(GraphServiceClient graphClient, string email, HttpContext httpContext)
-        {
-            try
-            {
-                // Load user's profile picture.
-                var pictureStream = await GetPictureStream(graphClient, email, httpContext);
-
-                // Copy stream to MemoryStream object so that it can be converted to byte array.
-                var pictureMemoryStream = new MemoryStream();
-                await pictureStream.CopyToAsync(pictureMemoryStream);
-
-                // Convert stream to byte array.
-                var pictureByteArray = pictureMemoryStream.ToArray();
-
-                // Convert byte array to base64 string.
-                var pictureBase64 = Convert.ToBase64String(pictureByteArray);
-
-                return "data:image/jpeg;base64," + pictureBase64;
-            }
-            catch (Exception e)
-            {
-                switch (e.Message)
-                {
-                    case "ResourceNotFound":
-                        // If picture not found, return the default image.
-                        return "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjwhRE9DVFlQRSBzdmcgIFBVQkxJQyAnLS8vVzNDLy9EVEQgU1ZHIDEuMS8vRU4nICAnaHR0cDovL3d3dy53My5vcmcvR3JhcGhpY3MvU1ZHLzEuMS9EVEQvc3ZnMTEuZHRkJz4NCjxzdmcgd2lkdGg9IjQwMXB4IiBoZWlnaHQ9IjQwMXB4IiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDMxMi44MDkgMCA0MDEgNDAxIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjMxMi44MDkgMCA0MDEgNDAxIiB4bWw6c3BhY2U9InByZXNlcnZlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPg0KPGcgdHJhbnNmb3JtPSJtYXRyaXgoMS4yMjMgMCAwIDEuMjIzIC00NjcuNSAtODQzLjQ0KSI+DQoJPHJlY3QgeD0iNjAxLjQ1IiB5PSI2NTMuMDciIHdpZHRoPSI0MDEiIGhlaWdodD0iNDAxIiBmaWxsPSIjRTRFNkU3Ii8+DQoJPHBhdGggZD0ibTgwMi4zOCA5MDguMDhjLTg0LjUxNSAwLTE1My41MiA0OC4xODUtMTU3LjM4IDEwOC42MmgzMTQuNzljLTMuODctNjAuNDQtNzIuOS0xMDguNjItMTU3LjQxLTEwOC42MnoiIGZpbGw9IiNBRUI0QjciLz4NCgk8cGF0aCBkPSJtODgxLjM3IDgxOC44NmMwIDQ2Ljc0Ni0zNS4xMDYgODQuNjQxLTc4LjQxIDg0LjY0MXMtNzguNDEtMzcuODk1LTc4LjQxLTg0LjY0MSAzNS4xMDYtODQuNjQxIDc4LjQxLTg0LjY0MWM0My4zMSAwIDc4LjQxIDM3LjkgNzguNDEgODQuNjR6IiBmaWxsPSIjQUVCNEI3Ii8+DQo8L2c+DQo8L3N2Zz4NCg==";
-                    case "EmailIsNull":
-                        return JsonConvert.SerializeObject(new { Message = "Email address cannot be null." }, Formatting.Indented);
-                    default:
-                        return null;
-                }
-            }
         }
 
         public static async Task<Stream> GetPictureStream(GraphServiceClient graphClient, string email, HttpContext httpContext)
