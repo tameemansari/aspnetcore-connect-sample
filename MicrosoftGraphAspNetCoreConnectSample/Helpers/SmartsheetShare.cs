@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
+namespace MicrosoftGraphAspNetCoreConnectSample.Helpers.Models
 {
     public partial class SmartsheetShare
     {
@@ -55,28 +55,5 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
 
         [JsonProperty("groupId", NullValueHandling = NullValueHandling.Ignore)]
         public long? GroupId { get; set; }
-    }
-
-    public partial class SmartsheetShare
-    {
-        public static SmartsheetShare FromJson(string json) => JsonConvert.DeserializeObject<SmartsheetShare>(json, MicrosoftGraphAspNetCoreConnectSample.Helpers.Converter.Settings);
-    }
-
-    public static class Serialize
-    {
-        public static string ToJson(this SmartsheetShare self) => JsonConvert.SerializeObject(self, MicrosoftGraphAspNetCoreConnectSample.Helpers.Converter.Settings);
-    }
-
-    internal static class Converter
-    {
-        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
-        {
-            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
-            DateParseHandling = DateParseHandling.None,
-            Converters =
-            {
-                new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-            },
-        };
     }
 }
