@@ -1,10 +1,18 @@
 ﻿<!--  Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license.
         See LICENSE in the source repository root for complete license information. -->
 @using Microsoft.AspNetCore.Http
-<h2>Loading converter!</h2>
+<h2>Queries smartsheets and converts to teams.</h2>
 @if (User.Identity.IsAuthenticated)
 {
+    <!--        
     <div class="alert alert-info @(Context.Session.GetString("SSAccessToken") == null ? "hidden" : null)" role="alert">
         @Html.Raw(Context.Session.GetString("SSAccessToken"))
     </div>
+    -->
+    <div class="row">
+        <div class="col-md-9">
+            <pre>@ViewData["Response"]</pre>
+        </div>
+    </div>
+    <br />
 }

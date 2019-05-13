@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Graph;
 using MicrosoftGraphAspNetCoreConnectSample.Helpers;
 using Newtonsoft.Json;
+using Smartsheet.NET.Core.Entities;
 using Smartsheet.NET.Core.Http;
 using System;
 using System.Collections.Generic;
@@ -111,20 +112,74 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
             return View();
         }
 
+        [Authorize]
         public async Task<IActionResult> Loader(string code, string expires_in, string state = "")
         {
             // https://localhost:44334/home/loader?code=y0fpnavbo97ftcf7&expires_in=599952&state=
-            // get query string info and get consent code & get auth token from smartsheets
-            var accessToken = await ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
-            if (!string.IsNullOrWhiteSpace(accessToken))
+            // get query string info and get consent code & get auth token from smartsheets            
+
+            string accessToken = HttpContext.Session.GetString("SSAccessToken");
+            if (string.IsNullOrWhiteSpace(accessToken))
             {
-                // call user info.
-                SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
-                Smartsheet.NET.Core.Entities.User userInfo = await client.GetCurrentUser(accessToken);                
+                accessToken = await ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
             }
+
+            // call user info.
+            SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
+            Smartsheet.NET.Core.Entities.User userInfo = await client.GetCurrentUser(accessToken);
+
+            var details = await client.ListSheets(accessToken);
+            StringBuilder sheetDetails = new StringBuilder();;
+            foreach(Sheet sheetInfo in details)
+            {
+                //get published status of the sheet. 
+                string s1 = await GetPublishUrl(accessToken, sheetInfo.Id.ToString());
+                string s = $"Sheet Name - {sheetInfo.Name}[{sheetInfo.Id}] with RWUrl ={s1} <br>";
+
+                // get list of users the sheet is shared with
+                // 
+                sheetDetails.Append(s);                
+            }
+
+            ViewData["Response"] = sheetDetails.ToString();
 
             // now all that handshake is complete redirect to index page. 
             return View();
+        }
+
+        private async Task<string> GetPublishUrl(string accessToken, string sheetId)
+        {
+            string reponseUrl = string.Empty;
+            string url = string.Empty;
+            if (!string.IsNullOrWhiteSpace(sheetId))
+            {
+                url = $"https://api.smartsheet.com/2.0/sheets/{sheetId}/publish ";
+            }
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                throw new Exception("Provided Smartsheet Code cannot be null");
+            }
+
+            HttpClient httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + accessToken);
+            var response = await httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                reponseUrl = await response.Content.ReadAsStringAsync();
+                Dictionary<string, string> responseInfo = JsonConvert.DeserializeObject<Dictionary<string, string>>(reponseUrl);
+                if (responseInfo["readWriteEnabled"].Equals("true", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    reponseUrl = responseInfo["readWriteUrl"];
+                }
+                else
+                {
+                    reponseUrl = string.Empty;
+                }
+            }
+
+            return reponseUrl;
         }
 
         private async Task<string> ObtainAccessToken(string url, string code, string clientId= "j6ex9cdw0ci3j9ucs2e", string clientSecret= "g8xirmd07iqr719i2f3", string redirectUri = "")
