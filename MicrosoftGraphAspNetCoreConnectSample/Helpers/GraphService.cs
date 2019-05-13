@@ -109,34 +109,35 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
             }
         }
 
-
-
         public static async Task<string> CreateGroupAndTeamApp(GraphServiceClient graphClient, string upn, SheetInformation sheetInformation)
         {
             try
-            {
-                var userInfo = await graphClient.Users[upn].Request().GetAsync().ConfigureAwait(false);
+            {                
                 string suffixInfo = Guid.NewGuid().ToString().Substring(0, 8);
                 string sheetName = sheetInformation.SheetName;
                 
-                #region Create group and add executing user as owner. 
+                #region Create group and add executing user as owner and append members. 
                 var grpInfo = await graphClient.Groups.Request().AddAsync(new Group()
                 {                    
-                    DisplayName = $"{suffixInfo}-{sheetName} Sheet Collaborators", 
+                    DisplayName = $"{sheetName} Sheet Collaborators-{suffixInfo}", 
                     MailNickname = $"grp1{sheetInformation.SheetId}-{suffixInfo}",
-                    Description = $"Team for collaborating on {sheetName}",
+                    Description = $"Team for collaborating on {sheetName} smartsheet.",
                     Visibility = "Private",
                     GroupTypes = new List<string>() { "Unified" },
                     MailEnabled = true,
                     SecurityEnabled = false,
-                });
-                await graphClient.Groups[grpInfo.Id].Members.References.Request().AddAsync(userInfo);
-
-                #region Append users to group. 
-                // TODO :: Append users.
-                // await AddUserToTeam(graphClient, grpInfo.Id, "usr3", "self34.onmicrosoft.com");
-                #endregion 
-
+                });               
+                
+                // append members from sheetInformation. 
+                foreach(string userUpn in sheetInformation.Collaborators)
+                {
+                    Debug.WriteLine($"Appending {userUpn}");
+                    if (!string.IsNullOrWhiteSpace(userUpn))
+                    {
+                        var memberToAppend = await graphClient.Users[userUpn].Request().GetAsync().ConfigureAwait(false);
+                        try { await graphClient.Groups[grpInfo.Id].Members.References.Request().AddAsync(memberToAppend); } catch { }                        
+                    }
+                }
                 #endregion
 
                 #region Build team and channel.
@@ -175,10 +176,8 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                 }
                 #endregion
 
-                #region Ping smartsheet app to channel with right configuration.
-                
-                //one didnt bind - https://app.smartsheet.com/b/publish?EQBCT=f7615490df8a44238ddc286745ade920&ss_src=mst
-                // string sheetUri = "https://app.smartsheet.com/b/publish?EQBCT=05ec5cb2e46f4fe4bf730c4f003d851d";                
+                #region Pin smartsheet app to channel with right configuration.                
+                //one didnt bind - https://app.smartsheet.com/b/publish?EQBCT=f7615490df8a44238ddc286745ade920&ss_src=mst                
                 var sheetTab = await graphClient.Teams[grpInfo.Id].Channels[channelInfo.Id].Tabs.Request().AddAsync(new TeamsTab()
                 {
                     AdditionalData = new Dictionary<string, object>()
@@ -247,7 +246,6 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
             }
 
         }
-
         public static async Task<Stream> GetPictureStream(GraphServiceClient graphClient, string email, HttpContext httpContext)
         {
             if (email == null) throw new Exception("EmailIsNull");
