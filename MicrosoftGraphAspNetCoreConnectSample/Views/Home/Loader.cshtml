@@ -1,18 +1,40 @@
 ﻿<!--  Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license.
         See LICENSE in the source repository root for complete license information. -->
 @using Microsoft.AspNetCore.Http
+@using MicrosoftGraphAspNetCoreConnectSample.Helpers
+@using Newtonsoft.Json
+
 <h2>Queries smartsheets and converts to teams.</h2>
 @if (User.Identity.IsAuthenticated)
 {
-    <!--        
-    <div class="alert alert-info @(Context.Session.GetString("SSAccessToken") == null ? "hidden" : null)" role="alert">
-        @Html.Raw(Context.Session.GetString("SSAccessToken"))
-    </div>
-    -->
-    <div class="row">
-        <div class="col-md-9">
-            <pre>@ViewData["Response"]</pre>
+    @if (TempData.ContainsKey("ConvertedSheets"))
+    {
+        string smartSheetData = TempData["ConvertedSheets"].ToString();
+        List<SheetInformation> availableSheets = new List<SheetInformation>();
+        if (!string.IsNullOrWhiteSpace(smartSheetData))
+        {
+            availableSheets = JsonConvert.DeserializeObject<List<SheetInformation>>(smartSheetData);
+        }
+        <div class="alert alert-info" role="alert">
+            @Html.Raw("Clicks the links below to directly launch the converted team channel.")
         </div>
-    </div>
+        @foreach (var sheetInfo in availableSheets)
+        {
+            <p><a href="@sheetInfo.TeamsUrl" target="_blank">@sheetInfo.SheetName</a> </p>
+        }
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-md-9">
+                <pre>@ViewData["Response"]</pre>
+            </div>
+        </div>
+        <form asp-controller="Home" asp-action="ConvertToTeams" method="post">
+            <div class="form-group">
+                <button type="submit">Convert To Teams</button>
+            </div>
+        </form>
+    }
     <br />
 }

@@ -109,7 +109,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
             }
         }
 
-        public static async Task<string> CreateGroupAndTeamApp(GraphServiceClient graphClient, string upn, SheetInformation sheetInformation)
+        public static async Task<string> CreateGroupAndTeamApp(GraphServiceClient graphClient, SheetInformation sheetInformation)
         {
             try
             {                
@@ -195,12 +195,13 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                     },
                 });
                 #endregion
-
-                return JsonConvert.SerializeObject("Success", Formatting.Indented);
+                
+                // return the url to created team. 
+                return channelInfo.WebUrl;
             }
-            catch (ServiceException se)
+            catch (ServiceException)
             {
-                return JsonConvert.SerializeObject(se.Message, Formatting.Indented);
+                return string.Empty;
             }
         }
 
@@ -342,7 +343,6 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
 
             return pictureStream;
         }
-
         // Send an email message from the current user.
         public static async Task SendEmail(GraphServiceClient graphClient, IHostingEnvironment hostingEnvironment, string recipients, HttpContext httpContext)
         {

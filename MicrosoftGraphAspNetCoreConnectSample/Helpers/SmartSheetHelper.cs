@@ -218,6 +218,8 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
         public string SheetRWUrl { get; set; }
 
         public List<string> Collaborators { get; set; }
+
+        public string TeamsUrl { get; set; }
     }
 
 }

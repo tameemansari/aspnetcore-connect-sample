@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Graph;
 using MicrosoftGraphAspNetCoreConnectSample.Helpers;
 using MicrosoftGraphAspNetCoreConnectSample.Helpers.Models;
+using Newtonsoft.Json;
 using Smartsheet.NET.Core.Entities;
 using Smartsheet.NET.Core.Http;
 using System.Collections.Generic;
@@ -35,7 +36,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
 
         [AllowAnonymous]
         // Load user's profile.
-        public async Task<IActionResult> Index(string email)
+        public IActionResult Index(string email)
         {
             if (User.Identity.IsAuthenticated)
             {
@@ -46,10 +47,10 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
                 // Initialize the GraphServiceClient.
                 var graphClient = _graphSdkHelper.GetAuthenticatedClient((ClaimsIdentity)User.Identity);
 
-                ViewData["Response"] = await GraphService.GetLicenseInfo(graphClient, email, HttpContext);
+                // ViewData["Response"] = await GraphService.GetLicenseInfo(graphClient, email, HttpContext);
 
                 // Reset the current user's email address and the status to display when the page reloads.
-                TempData["Message"] = "Got license data.";
+                TempData["Message"] = "Please click consent above to query your smartsheets account.";
             }
 
             return View();
@@ -111,58 +112,99 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Controllers
         [Authorize]
         public async Task<IActionResult> Loader(string code, string expires_in, string state = "")
         {
-            // https://localhost:44334/home/loader?code=y0fpnavbo97ftcf7&expires_in=599952&state=
-            // get query string info and get consent code & get auth token from smartsheets            
-
-            string accessToken = HttpContext.Session.GetString("SSAccessToken");
-            if (string.IsNullOrWhiteSpace(accessToken))
+            if (TempData.ContainsKey("ResponseMessage"))
             {
-                accessToken = await SmartSheetHelper.ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
-                HttpContext.Session.SetString("SSAccessToken", accessToken);
+                ViewData["Response"] = TempData["ResponseMessage"].ToString();
             }
-            
-            SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
-            var details = await client.ListSheets(accessToken);
 
-            string email = User.FindFirst("preferred_username")?.Value;
-            var graphClient = _graphSdkHelper.GetAuthenticatedClient((ClaimsIdentity)User.Identity);
-            StringBuilder sheetDetails = new StringBuilder();;
-            foreach(Sheet thisSheet in details)
+            string smartSheetData = string.Empty;
+            if (TempData.ContainsKey("ConvetibleSheets"))
             {
-                string sheetPublishUrl = await SmartSheetHelper.GetPublishUrl(accessToken, thisSheet.Id.ToString());
+                smartSheetData = TempData["ConvetibleSheets"].ToString();
+            }
 
-                SheetInformation sheetToBuild = new SheetInformation()
+
+            if (TempData.ContainsKey("ConvertedSheets"))
+            {
+
+                return View();
+            }
+
+            if (string.IsNullOrWhiteSpace(smartSheetData))
+            {
+                string accessToken = HttpContext.Session.GetString("SSAccessToken");
+                if (string.IsNullOrWhiteSpace(accessToken))
                 {
-                    SheetId = thisSheet.Id.ToString(),
-                    SheetName = thisSheet.Name,
-                    SheetRWUrl = sheetPublishUrl,
-                    Collaborators = new List<string>(),
-                };
-                
-                // get list of users the sheet is shared with
-                SmartSheetShare sheetSharedWith = await SmartSheetHelper.GetSheetShareInfo(accessToken, thisSheet.Id.ToString());
-                if (sheetSharedWith != null)
-                {
-                    List<string> userInfo = new List<string>();
-                    foreach(Datum datum in sheetSharedWith.Data)
-                    {
-                        if (!string.IsNullOrWhiteSpace(datum.Email))
-                        {
-                            sheetToBuild.Collaborators.Add(datum.Email);
-                        }
-                    }                    
+                    accessToken = await SmartSheetHelper.ObtainAccessToken("https://api.smartsheet.com/2.0/token", code);
+                    HttpContext.Session.SetString("SSAccessToken", accessToken);
                 }
-                await GraphService.CreateGroupAndTeamApp(graphClient, email, sheetToBuild);
 
-                //get published status of the sheet.                 
-                string s = $"Sheet Name - {thisSheet.Name}[{thisSheet.Id}] with RWUrl ={sheetPublishUrl} <br>";
-                sheetDetails.Append(s);                
+                SmartsheetHttpClient client = new SmartsheetHttpClient(accessToken, null);
+                var details = await client.ListSheets(accessToken);
+                List<SheetInformation> availableSmartSheets = new List<SheetInformation>();
+
+                StringBuilder sheetDetails = new StringBuilder(); ;
+                foreach (Sheet thisSheet in details)
+                {
+                    string sheetPublishUrl = await SmartSheetHelper.GetPublishUrl(accessToken, thisSheet.Id.ToString());
+                    SheetInformation sheetToBuild = new SheetInformation()
+                    {
+                        SheetId = thisSheet.Id.ToString(),
+                        SheetName = thisSheet.Name,
+                        SheetRWUrl = sheetPublishUrl,
+                        Collaborators = new List<string>(),
+                    };
+
+                    // get list of users the sheet is shared with
+                    SmartSheetShare sheetSharedWith = await SmartSheetHelper.GetSheetShareInfo(accessToken, thisSheet.Id.ToString());
+                    if (sheetSharedWith != null)
+                    {
+                        List<string> userInfo = new List<string>();
+                        foreach (Datum datum in sheetSharedWith.Data)
+                        {
+                            if (!string.IsNullOrWhiteSpace(datum.Email))
+                            {
+                                sheetToBuild.Collaborators.Add(datum.Email);
+                            }
+                        }
+                    }
+                    availableSmartSheets.Add(sheetToBuild);
+                }
+
+                ViewData["Response"] = $"We found {availableSmartSheets.Count} Smartsheets which can be converted to teams. Press 'Convert To Teams' to convert.";
+                TempData["ConvetibleSheets"] = JsonConvert.SerializeObject(availableSmartSheets);
             }
-
-            ViewData["Response"] = sheetDetails.ToString();
 
             // now all that handshake is complete redirect to index page. 
             return View();
+        }
+
+        [Authorize]
+        [HttpPost]
+        public async Task<IActionResult> ConvertToTeams()
+        {
+            string smartSheetData = string.Empty;
+            if (TempData.ContainsKey("ConvetibleSheets"))
+            {
+                smartSheetData = TempData["ConvetibleSheets"].ToString();
+            }
+
+            List<SheetInformation> availableSheets = new List<SheetInformation>();
+            if (!string.IsNullOrWhiteSpace(smartSheetData))
+            {
+                availableSheets = JsonConvert.DeserializeObject<List<SheetInformation>>(smartSheetData);
+                TempData["ResponseMessage"] = $"Going to convert {availableSheets.Count} sheets to teams.";
+            }
+
+            var graphClient = _graphSdkHelper.GetAuthenticatedClient((ClaimsIdentity)User.Identity);            
+            
+            foreach (SheetInformation sheet in availableSheets)
+            {
+                sheet.TeamsUrl = await GraphService.CreateGroupAndTeamApp(graphClient, sheet);
+            }
+
+            TempData["ConvertedSheets"] = JsonConvert.SerializeObject(availableSheets);
+            return RedirectToAction("Loader");
         }
 
 
