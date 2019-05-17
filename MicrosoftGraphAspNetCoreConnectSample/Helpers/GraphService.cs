@@ -140,6 +140,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                 }
                 #endregion
 
+                // TODO :: This is an expensive call.
                 #region Build team and channel.
                 var teamInfo = await graphClient.Groups[grpInfo.Id].Team.Request().PutAsync(new Team()
                 {
@@ -159,8 +160,11 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                 var teamApps = await graphClient.AppCatalogs.TeamsApps.Request().GetAsync();
                 TeamsApp sheetApp = teamApps.First(x => x.Id.Equals("f4d81e8e-4500-44c2-8328-9e06cbe037c5", StringComparison.InvariantCultureIgnoreCase));
 
-                var installedApps = await graphClient.Teams[grpInfo.Id].InstalledApps.Request().Expand("teamsAppDefinition").GetAsync();
-                bool isSmartsheetsInstalled = installedApps.Any(x => x.TeamsAppDefinition.TeamsAppId.Equals("f4d81e8e-4500-44c2-8328-9e06cbe037c5", StringComparison.InvariantCultureIgnoreCase));
+                // :: TODO :: removed for perf optimization. Not required. 
+                // var installedApps = await graphClient.Teams[grpInfo.Id].InstalledApps.Request().Expand("teamsAppDefinition").GetAsync();
+                // bool isSmartsheetsInstalled = false; // installedApps.Any(x => x.TeamsAppDefinition.TeamsAppId.Equals("f4d81e8e-4500-44c2-8328-9e06cbe037c5", StringComparison.InvariantCultureIgnoreCase));
+
+                bool isSmartsheetsInstalled = false; 
                 if (!isSmartsheetsInstalled)
                 {
                     TeamsAppInstallation appInstall = new TeamsAppInstallation()
@@ -197,7 +201,7 @@ namespace MicrosoftGraphAspNetCoreConnectSample.Helpers
                 #endregion
                 
                 // return the url to created team. 
-                return channelInfo.WebUrl;
+                return sheetTab.WebUrl; 
             }
             catch (ServiceException)
             {
